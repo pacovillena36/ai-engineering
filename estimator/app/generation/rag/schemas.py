@@ -192,6 +192,26 @@ class RetrievedChunk(BaseModel):
         description="Traceable corpus id of the parent budget (from JSONB metadata). "
         "Used by the Session 10 retrieval evaluation to grade precision per budget.",
     )
+    # --- Session 10 debug fields (optional, so the S09 contract is unchanged) ---
+    document_id: int | None = Field(
+        default=None, description="DB id of the parent document (budget)."
+    )
+    lexical_score: float | None = Field(
+        default=None,
+        description="ts_rank_cd score from the full-text branch (higher = better). "
+        "None when the chunk was not surfaced by the lexical branch. Never mixed "
+        "with ``distance``.",
+    )
+    rrf_score: float | None = Field(
+        default=None,
+        description="Reciprocal Rank Fusion score in hybrid mode (higher = better). "
+        "None in vector mode.",
+    )
+    rerank_score: float | None = Field(
+        default=None,
+        description="Cross-encoder relevance score (higher = better). None when "
+        "reranking is off.",
+    )
 
 
 class RetrievalResult(BaseModel):

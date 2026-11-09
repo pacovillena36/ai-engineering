@@ -1,0 +1,47 @@
+[
+  {
+    "id": "h1",
+    "query": "A hospital group wants patients to book visits online and see their doctor over video, while readings from home health devices such as smartwatches raise alerts for the care team.",
+    "relevant_document_ids": [
+      "BUD-2024-009",
+      "BUD-2024-010"
+    ],
+    "notes": "Multi-relevant, paraphrased (no 'telemedicine', 'wearable', 'FHIR'). Same-sector traps: BUD-2024-011 pharmacy, BUD-2024-012 clinical trials. ANNOTATION: proposed by Claude before seeing any retrieval output (strict: same kind of project), PENDING human review."
+  },
+  {
+    "id": "h2",
+    "query": "Digital bank onboarding: verify the customer's identity, assess their creditworthiness, sign the contract electronically and link their accounts at other banks through open banking.",
+    "relevant_document_ids": [
+      "BUD-2024-002",
+      "BUD-2024-001"
+    ],
+    "notes": "Multi-relevant fintech with shared vocabulary. Traps: BUD-2024-004 robo-advisor ('client onboarding and risk profiling'), BUD-2024-006 marketplace vendor KYC. ANNOTATION: proposed by Claude before seeing any retrieval output (strict: same kind of project), PENDING human review."
+  },
+  {
+    "id": "h3",
+    "query": "Webshop for a fashion brand with a product catalogue, checkout and personalised suggestions, plus an easy way for customers to send clothes back so they can be inspected and resold.",
+    "relevant_document_ids": [
+      "BUD-2024-005",
+      "BUD-2024-008"
+    ],
+    "notes": "Multi-relevant e-commerce. Traps: BUD-2024-017 bare-bones MVP (borderline, judged not relevant: no recommendations/returns), BUD-2024-006 marketplace refunds. ANNOTATION: proposed by Claude before seeing any retrieval output (strict: same kind of project), PENDING human review."
+  },
+  {
+    "id": "h4",
+    "query": "Strangler-fig migration off a COBOL mainframe ledger behind an anti-corruption layer, plus a new transaction ledger exposed through OAuth-secured APIs for the mobile app.",
+    "relevant_document_ids": [
+      "BUD-2024-016",
+      "BUD-2024-001"
+    ],
+    "notes": "Exact technical terms (COBOL, strangler, anti-corruption layer, OAuth): the lexical branch should help. Trap: BUD-2024-003 payments (settlement/ledger vocabulary). ANNOTATION: proposed by Claude before seeing any retrieval output (strict: same kind of project), PENDING human review."
+  },
+  {
+    "id": "h5",
+    "query": "Operations platform for a logistics site: track robots and trucks moving through the facility, schedule dock arrivals and predict machine failures from sensor readings.",
+    "relevant_document_ids": [
+      "BUD-2024-014",
+      "BUD-2024-013"
+    ],
+    "notes": "Ambiguous industrial vs delivery logistics. Traps: BUD-2024-007 grocery route optimization, BUD-2024-015 grid monitoring. ANNOTATION: proposed by Claude before seeing any retrieval output (strict: same kind of project), PENDING human review."
+  }
+]
