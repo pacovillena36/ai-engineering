@@ -1,4 +1,4 @@
-"""Pydantic models for the embedding pipeline.
+﻿"""Pydantic models for the embedding pipeline.
 
 Input side mirrors the normalized historical-budget JSON (a budget with a list
 of components). Output side carries chunks ready to embed and, once embedded,
@@ -7,14 +7,24 @@ the vectors plus aggregate stats.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Closed universe of client sectors present in the sample dataset. Kept as a
 # Literal so a typo or an unexpected sector fails validation loudly instead of
 # silently leaking into the metadata.
-Sector = Literal["finance", "ecommerce", "healthcare", "industrial"]
+Sector = Literal[
+    "finance",
+    "ecommerce",
+    "healthcare",
+    "industrial",
+    "logistics",
+    "education",
+    "media",
+    "government",
+]
 Complexity = Literal["low", "medium", "high"]
 
 
@@ -183,8 +193,10 @@ class RetrievedChunk(BaseModel):
 
     id: int
     content: str
-    sector: str
-    project_year: int
+    # sector/project_year are budget-centric; they default for the Session 10
+    # collections (transcripts, technical docs) that carry no such metadata.
+    sector: str = "unknown"
+    project_year: int = 0
     chunk_type: str
     distance: float = Field(description="Cosine distance (lower = more similar).")
     budget_id: str | None = Field(
@@ -192,25 +204,33 @@ class RetrievedChunk(BaseModel):
         description="Traceable corpus id of the parent budget (from JSONB metadata). "
         "Used by the Session 10 retrieval evaluation to grade precision per budget.",
     )
-    # --- Session 10 debug fields (optional, so the S09 contract is unchanged) ---
-    document_id: int | None = Field(
-        default=None, description="DB id of the parent document (budget)."
+    # --- Session 10 multi-index fields (default-valued → backward compatible) ---
+    collection: str = Field(
+        default="budget",
+        description="Provenance label: which collection this chunk came from "
+        "(budget / transcript / technical_doc). Travels with the chunk for "
+        "attribution, auditing and debugging (Article 5).",
     )
-    lexical_score: float | None = Field(
+    source_id: str | None = Field(
         default=None,
-        description="ts_rank_cd score from the full-text branch (higher = better). "
-        "None when the chunk was not surfaced by the lexical branch. Never mixed "
-        "with ``distance``.",
+        description="Generic traceable id of the parent document, whatever the "
+        "collection (budget_id, transcript_id, doc_id). Used to grade precision.",
     )
-    rrf_score: float | None = Field(
+    relevance_score: float | None = Field(
         default=None,
-        description="Reciprocal Rank Fusion score in hybrid mode (higher = better). "
-        "None in vector mode.",
+        description="Final relevance score after reranking / fusion, before/after "
+        "temporal decay. Higher = better. None on the plain vector path.",
     )
-    rerank_score: float | None = Field(
+    document_date: date | None = Field(
         default=None,
-        description="Cross-encoder relevance score (higher = better). None when "
-        "reranking is off.",
+        description="Date used by temporal decay (budget year-start or transcript "
+        "meeting date). None when the collection carries no usable date.",
+    )
+    estimated_hours: int | None = Field(
+        default=None,
+        description="Historical hours recorded for this chunk (budget component / "
+        "historical task), flattened from JSONB metadata. None for collections that "
+        "carry no hours. Read by the per-task hours estimator (Session 10).",
     )
 
 
@@ -242,22 +262,78 @@ class Assumption(BaseModel):
     rationale: str
 
 
+class SourceReference(BaseModel):
+    """A verifiable, line-level citation back to a single retrieved chunk.
+
+    Session 11 lifts citation from the coarse, estimate-global
+    :class:`SourceCitation` down to the individual estimate line: every grounded
+    line carries the concrete chunk it derived from plus the verbatim evidence
+    that backs it, so a reader (and :func:`validation.verify_citations`) can
+    check the claim instead of trusting it.
+    """
+
+    chunk_id: str = Field(
+        description="Id of the retrieved chunk supporting this line — the `id` "
+        "attribute of the <source> element it was taken from."
+    )
+    document_id: str = Field(
+        description="Historical budget document the chunk belongs to — the "
+        "`document_id` attribute of the <source> element."
+    )
+    evidence: str = Field(
+        description="Verbatim span or figure copied from the source that backs "
+        "this line. Quote the source; do not paraphrase."
+    )
+
+
 class TaskItem(BaseModel):
     """One concrete engineering task inside a functional module, in engineer-days.
 
-    ``sources`` cite the historical chunk(s) the task was derived from; a task
-    with no historical analog is left uncited and should surface as an
-    :class:`Assumption` instead.
+    Each task is an estimate *line*. When ``grounded`` is True the line derives
+    from historical evidence and carries at least one :class:`SourceReference`;
+    when False the line has no sufficient source data — it must not invent hours
+    and should surface its scope as an :class:`Assumption` instead.
     """
 
     name: str
-    description: str | None = Field(
-        default=None, description="One-line scope of the task."
+    description: str | None = Field(default=None, description="One-line scope of the task.")
+    engineer_days: int | None = Field(
+        default=None,
+        ge=0,
+        description="Effort in engineer-days. None in the structure-only generation "
+        "mode (Session 10): the LLM proposes the module→task structure and the hours "
+        "are derived afterwards by per-task vector search, not inferred here. Must be "
+        "None when ``grounded`` is False (no source data => no invented hours).",
     )
-    engineer_days: int = Field(ge=0)
-    sources: list[int] = Field(
-        default_factory=list, description="Chunk ids that back this task."
+    grounded: bool = Field(
+        default=False,
+        description="True iff this line is backed by retrieved source data. False "
+        "means 'no sufficient source data': the line carries no sources and no "
+        "invented hours.",
     )
+    sources: list[SourceReference] = Field(
+        default_factory=list,
+        description="Per-line citations. Non-empty iff ``grounded`` is True.",
+    )
+
+    @model_validator(mode="after")
+    def _grounding_integrity(self) -> "TaskItem":
+        """Enforce the Session 11 line-level grounding contract.
+
+        A grounded line must cite at least one source; an ungrounded line must
+        neither cite sources nor invent hours. Violations raise so Instructor
+        re-prompts the model rather than letting an unverifiable line through.
+        """
+        if self.grounded and not self.sources:
+            raise ValueError("a grounded line must cite at least one source")
+        if not self.grounded and self.sources:
+            raise ValueError("an ungrounded line (grounded=False) must not carry sources")
+        if not self.grounded and self.engineer_days is not None:
+            raise ValueError(
+                "an ungrounded line (grounded=False) must leave engineer_days null; "
+                "do not invent hours without source data"
+            )
+        return self
 
 
 class WorkModule(BaseModel):
@@ -265,9 +341,7 @@ class WorkModule(BaseModel):
     grouping the concrete tasks needed to deliver it."""
 
     name: str
-    description: str | None = Field(
-        default=None, description="What this functional block covers."
-    )
+    description: str | None = Field(default=None, description="What this functional block covers.")
     tasks: list[TaskItem] = Field(default_factory=list)
 
 
@@ -290,6 +364,57 @@ class Estimate(BaseModel):
     confidence: Confidence
     reasoning: str = Field(description="How the estimate was derived from the sources.")
     insufficient_context_explanation: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Session 11 — programmatic citation verification.
+#
+# The output of :func:`validation.verify_citations`: a per-line audit of where
+# every estimate line's citation points and whether that chunk was actually in
+# the retrieved context. A dangling citation (an id the LLM never saw) is a
+# grounding failure, not a cosmetic detail — the report keeps it visible.
+# ---------------------------------------------------------------------------
+
+LineCitationStatus = Literal["grounded", "dangling", "insufficient"]
+
+
+class LineCitation(BaseModel):
+    """The citation status of a single estimate line."""
+
+    module: str = Field(description="Module the line belongs to.")
+    component: str = Field(description="The line (task) name.")
+    status: LineCitationStatus = Field(
+        description="grounded = all cited chunks were retrieved; dangling = at "
+        "least one cited chunk_id was never in the context; insufficient = the "
+        "line is flagged as having no sufficient source data."
+    )
+    cited_chunk_ids: list[str] = Field(default_factory=list)
+    dangling_chunk_ids: list[str] = Field(
+        default_factory=list, description="Cited ids that were never retrieved."
+    )
+
+
+class CitationReport(BaseModel):
+    """Aggregate result of verifying an estimate's citations against the context."""
+
+    total_lines: int = Field(ge=0)
+    grounded_lines: int = Field(ge=0, description="Lines whose every citation was retrieved.")
+    dangling_lines: int = Field(ge=0, description="Lines with at least one fabricated citation.")
+    insufficient_lines: int = Field(ge=0, description="Lines flagged as no sufficient data.")
+    verified_citations: int = Field(
+        ge=0, description="Count of individual citations that resolved to a retrieved chunk."
+    )
+    dangling_citations: list[str] = Field(
+        default_factory=list,
+        description="Sorted, de-duplicated cited ids that were never retrieved "
+        "(line-level and estimate-global). Empty means every citation is real.",
+    )
+    lines: list[LineCitation] = Field(default_factory=list)
+
+    @property
+    def has_dangling(self) -> bool:
+        """True when any citation points outside the retrieved context."""
+        return bool(self.dangling_citations)
 
 
 # ---- HTTP request models for the Session 9 routers ------------------------
@@ -362,6 +487,15 @@ class AssembleResult(BaseModel):
     token_count: int = Field(ge=0, description="Tokens in the assembled context block.")
 
 
+class StructureRequest(BaseModel):
+    """Payload for ``POST /v1/estimate/stages/structure`` (Session 10).
+
+    The wizard generates the module→task structure as a free decomposition of the
+    reformulated brief — no retrieval, no sources. Only the query is needed."""
+
+    query: EstimationQuery
+
+
 class GenerateRequest(BaseModel):
     """Payload for ``POST /v1/estimate/stages/generate``.
 
@@ -371,6 +505,12 @@ class GenerateRequest(BaseModel):
     context_block: str = Field(min_length=1)
     query: EstimationQuery
     kept_chunks: list[RetrievedChunk] = Field(default_factory=list)
+    include_hours: bool = Field(
+        default=True,
+        description="When False (Session 10), generate the module→task structure "
+        "WITHOUT hours; the hours are derived later by per-task vector search. "
+        "Defaults to True to preserve the Session 9 single-shot behaviour.",
+    )
 
 
 class GenerateResult(BaseModel):
@@ -378,10 +518,90 @@ class GenerateResult(BaseModel):
     the wizard surfaces (instead of auto-retrying like the full pipeline)."""
 
     estimate: Estimate
-    fabricated_source_ids: list[int] = Field(
+    fabricated_source_ids: list[str] = Field(
         default_factory=list,
-        description="Cited source ids not present in kept_chunks (empty = clean).",
+        description="Cited chunk_ids not present in kept_chunks (empty = clean). "
+        "Mirrors ``citation_report.dangling_citations`` for backward compatibility.",
     )
-    coherent: bool = Field(
-        description="False when an insufficient estimate still carries numbers."
+    citation_report: CitationReport | None = Field(
+        default=None,
+        description="Session 11 per-line citation verification report (None for the "
+        "structure-only stage, which has no sources to verify).",
     )
+    coherent: bool = Field(description="False when an insufficient estimate still carries numbers.")
+
+
+# ---------------------------------------------------------------------------
+# Session 10 — per-task hours estimation by vector search.
+#
+# The structure-only generation produces modules → tasks WITHOUT hours. Each
+# task is then matched against the historical task corpus (chunk_type
+# ``historical_task``); the hours come from a weighted consensus of the nearest
+# neighbours, with a reliability score. A task with no neighbour under the
+# distance threshold gets no hours (surfaced as a red flag in the UI).
+# ---------------------------------------------------------------------------
+
+
+class TaskNeighbor(BaseModel):
+    """One historical task that matched the query task, for transparency."""
+
+    source_id: int = Field(description="DB id of the matched historical_task chunk.")
+    budget_id: str | None = Field(default=None, description="Traceable parent corpus id.")
+    estimated_hours: int = Field(ge=0, description="Hours recorded for this historical task.")
+    distance: float = Field(description="Cosine distance to the query task (lower = closer).")
+
+
+class TaskHoursEstimate(BaseModel):
+    """Hours derived for one task from the historical task corpus.
+
+    ``has_match=False`` (no neighbour under the threshold) leaves
+    ``estimated_hours``/``reliability`` null — the UI flags the row red and the
+    human supplies the number in the validation step.
+    """
+
+    module: str = Field(description="Module the task belongs to (echoed back).")
+    task: str = Field(description="Task name (echoed back).")
+    estimated_hours: int | None = Field(
+        default=None, ge=0, description="Weighted-consensus hours, or null when no match."
+    )
+    reliability: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="0..1 confidence in the hours (closeness × neighbour agreement).",
+    )
+    has_match: bool = Field(description="Whether any neighbour crossed the distance threshold.")
+    dispersion: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Spread of neighbour hours (coefficient of variation); higher = less agreement.",
+    )
+    neighbors: list[TaskNeighbor] = Field(
+        default_factory=list, description="The historical tasks the hours were derived from."
+    )
+
+
+class TaskHoursTaskInput(BaseModel):
+    """One task to estimate (name + optional description)."""
+
+    name: str = Field(min_length=1)
+    description: str | None = None
+
+
+class TaskHoursModuleInput(BaseModel):
+    """One module with its tasks, as reviewed by the human before hours."""
+
+    name: str = Field(min_length=1)
+    tasks: list[TaskHoursTaskInput] = Field(default_factory=list)
+
+
+class TaskHoursRequest(BaseModel):
+    """Payload for ``POST /v1/estimate/tasks/hours``."""
+
+    modules: list[TaskHoursModuleInput] = Field(min_length=1)
+
+
+class TaskHoursResult(BaseModel):
+    """Per-task hours estimates, in the order the tasks were submitted."""
+
+    tasks: list[TaskHoursEstimate] = Field(default_factory=list)
