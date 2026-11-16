@@ -9,3 +9,8 @@ guides/
 .vscode/
 __pycache__/
 .claude/
+# Virtual environments
+.venv
+
+# Environment variables
+.env
