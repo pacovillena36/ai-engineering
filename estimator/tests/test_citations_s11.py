@@ -7,8 +7,6 @@ document_id verification).
 
 from __future__ import annotations
 
-import pytest
-
 from app.generation.rag.schemas import (
     Assumption,
     Estimate,
@@ -338,7 +336,3 @@ def test_line_citation_report_detail():
     assert line.status == "grounded"
     assert line.cited_chunk_ids == ["101"]
     assert line.dangling_chunk_ids == []
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
