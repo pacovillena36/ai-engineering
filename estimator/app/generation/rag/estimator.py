@@ -285,7 +285,11 @@ async def estimate_from_transcript(
             estimate = await _generate(context_block, query, feedback=feedback)
         report = verify_citations(estimate, retrieved_ids)
         if report.has_dangling:
-            log.warning("citations_unrepaired", request_id=request_id, dangling=report.dangling_citations)
+            log.warning(
+                "citations_unrepaired",
+                request_id=request_id,
+                dangling=report.dangling_citations,
+            )
             estimate = estimate.model_copy(update={"confidence": "low"})
 
     # 7. Coherence guard: one repair attempt, then reject.

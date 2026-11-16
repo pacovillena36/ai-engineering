@@ -1,4 +1,4 @@
-﻿"""Pydantic models for the embedding pipeline.
+"""Pydantic models for the embedding pipeline.
 
 Input side mirrors the normalized historical-budget JSON (a budget with a list
 of components). Output side carries chunks ready to embed and, once embedded,
@@ -574,7 +574,9 @@ class TaskHoursEstimate(BaseModel):
     dispersion: float | None = Field(
         default=None,
         ge=0.0,
-        description="Spread of neighbour hours (coefficient of variation); higher = less agreement.",
+        description=(
+            "Spread of neighbour hours (coefficient of variation); higher = less agreement."
+        ),
     )
     neighbors: list[TaskNeighbor] = Field(
         default_factory=list, description="The historical tasks the hours were derived from."
