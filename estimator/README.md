@@ -406,6 +406,92 @@ El tuning de Postgres para builds de índices vive en `docker-compose.yml` (serv
 1. Repositorio actualizado: índice halfvec activo, flags de tuning en compose, queries de monitorización en el README.
 2. Documento corto con los números observados en **vuestro** barrido de `ef_search` (tabla del script) y la decisión razonada del valor adoptado: qué recall ganáis y qué latencia pagáis frente a las alternativas.
 
+## Sesión 12 — Agente agentico con bucle manual
+
+Implementación de un **agente con bucle while manual** que:
+- Recibe una transcripción de reunión
+- Descompone el problema en componentes
+- Itera con dos tools: `search_budgets` (retrieval) y `calculate_estimate` (cálculo determinista)
+- Captura una traza estructurada (Pydantic) de cada iteración: razonamiento, acción, observación
+
+**Ubicación**: `app/generation/agentic/`
+
+### Piezas
+
+| Archivo | Propósito |
+|---|---|
+| `agent_tools.py` | Schemas Pydantic + JSON Schema con `strict: true` para las dos tools |
+| `agent_loop.py` | `EstimationAgent`: while loop manual, validación de argumentos, error handling |
+| `agent_trace.py` | `AgentExecution` y `AgentStep`: traza estructurada (JSON serializable) |
+| `llm_client.py` | Protocol (interface) para hacer testeable el bucle sin red |
+| `llm_double.py` | `MockLLMClient`: test double con secuencias guionizadas |
+| `llm_responses_client.py` | Cliente real con Responses API (function calling) |
+| `retrieval.py` | Wrapper para `search_budgets` (RAG pipeline + stub fallback) |
+| `tools_impl.py` | Implementación de las dos tools |
+
+### Salvaguardas
+
+```python
+MAX_ITERATIONS = 10              # Hard limit del bucle
+MAX_TOOL_CALLS = 20              # Ejecuciones totales permitidas
+REQUEST_TIMEOUT_SECONDS = 60     # Timeout por llamada a LLM
+MAX_TRANSCRIPT_LENGTH = 500_000  # Validación en frontera
+```
+
+### Ejecución
+
+```bash
+# Con modelo mock (sin tokens):
+cd estimator
+uv run python scripts/run_agent_s12.py \
+    exercises/session-12/sample_transcript_complex.txt \
+    --model mock \
+    --stub \
+    --output outputs/trace_s12
+
+# Con modelo real (gpt-5-mini):
+export OPENAI_API_KEY=sk-...
+uv run python scripts/run_agent_s12.py \
+    exercises/session-12/sample_transcript_complex.txt \
+    --model gpt-5-mini \
+    --stub \
+    --output outputs/trace_s12
+```
+
+### Tests
+
+```bash
+uv run pytest tests/test_agent_s12.py -v
+```
+
+Incluye:
+- **Test 1**: Loop con doble guionizado (function_call order, call_ids, termination)
+- **Test 2**: Terminación en `max_iterations` (doble infinito)
+- **Test 3**: `calculate_estimate` es puro (determinista)
+- **Test 4**: Argumentos inválidos → error observation, bucle continúa
+- **Test 5**: Inyección en transcript → NO cambia argumentos de tools
+
+### Design decisions
+
+1. **Bucle manual, no automático**: while loop conductido a mano, NO delegado a Responses API. El ejercicio es ver el ida y vuelta; `previous_response_id` se encadena explícitamente.
+
+2. **Validación pre-ejecución**: Argumentos parseados con `json.loads()` y validados con Pydantic ANTES de ejecutar cualquier tool. JSON malformado o schema inválido → observación de error (el agente recupera).
+
+3. **Tools inofensivas**: `search_budgets` es read-only; `calculate_estimate` es puro (misma entrada = misma salida, siempre). Esto hace el agente seguro frente a inyección: el peor caso es una estimación mala, visible en la traza.
+
+4. **Traza estructurada**: Cada paso captura reasoning, action_arguments, observation, duración, tokens. Serializable a JSON para análisis y auditoría.
+
+5. **LLM como Protocol**: El loop recibe un `AgentLLMClient` (Protocol, interface) y no conoce sobre LiteLLM/Anthropic/OpenAI. Testeable con `MockLLMClient` sin red.
+
+6. **Todo en inglés**: Clases, variables, docstrings, descripciones de tools, mensajes de log.
+
+### Entregables de la sesión
+
+- Branch: `session-12/pre-work`
+- Traza real ejecutada: `outputs/trace_complex.json` + `.txt`
+- Tests: 5/5 lógica verificada
+- Documentación: `SESSION_12_SUMMARY.md`
+
 ---
 
 > Este proyecto forma parte del **Master en AI Engineering** y es la base sobre la que se construye en directo el resto de la Sesión 04 (output estructurado, guardrails, cache semántico) y de la Sesión 05 (compresión avanzada de memoria con anclas, tier dinámico, patrón Actor-Critic-Boss).
