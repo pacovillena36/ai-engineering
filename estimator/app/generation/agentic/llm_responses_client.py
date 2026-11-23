@@ -54,11 +54,26 @@ class ResponsesAPIClient:
         if messages and isinstance(messages[-1], dict):
             previous_response_id = messages[-1].pop("previous_response_id", None)
 
+        # Convert tools from Responses API format to Chat Completions format
+        # Responses API: {type, name, description, parameters}
+        # Chat Completions: {type: "function", function: {name, description, parameters}}
+        formatted_tools = []
+        for tool in tools:
+            formatted_tool = {
+                "type": "function",
+                "function": {
+                    "name": tool.get("name"),
+                    "description": tool.get("description"),
+                    "parameters": tool.get("parameters", {}),
+                }
+            }
+            formatted_tools.append(formatted_tool)
+
         # Build kwargs
         kwargs = {
             "model": model,
             "messages": messages,
-            "tools": tools,
+            "tools": formatted_tools,
             "tool_choice": "auto",
             "timeout": timeout_seconds,
         }
