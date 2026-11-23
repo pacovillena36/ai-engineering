@@ -1,0 +1,27 @@
+================================================================================
+AGENT EXECUTION TRACE
+================================================================================
+Execution ID: 7e32116a-6def-4960-9316-2453666eadd5
+Model: mock
+Tools Schema Version: v1
+Started: 2026-11-23T15:59:44.471647
+Finished: 2026-11-23T15:59:44.471647
+Total Duration: 0ms
+Total Tokens: 200 in / 100 out
+Steps: 2
+Termination: success
+
+--- STEP 1 ---
+Action: search_budgets({'query': 'authentication backend', 'filters': None})
+Observation: Found 0 historical references for query 'authentication backend'
+Duration: 0ms | Tokens: 100in/50out
+
+--- STEP 2 ---
+Action: calculate_estimate({'components': [{'name': 'Authentication backend', 'reference_amounts': [420.0, 380.0]}]})
+Observation: total=460.0h across 1 components
+Duration: 0ms | Tokens: 100in/50out
+
+--- FINAL ESTIMATE ---
+{'summary': 'Estimation complete. Total effort: ~400 engineer-hours.', 'step_count': 2}
+
+================================================================================

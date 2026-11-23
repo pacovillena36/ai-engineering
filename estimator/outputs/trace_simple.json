@@ -1,0 +1,54 @@
+{
+  "execution_id": "f75877e8-4f1b-4bf0-8901-f579ccde616f",
+  "model": "mock",
+  "tools_schema_version": "v1",
+  "started_at": "2026-11-23T15:59:16.271430",
+  "finished_at": "2026-11-23T15:59:16.272429",
+  "total_duration_ms": 0,
+  "total_input_tokens": 100,
+  "total_output_tokens": 50,
+  "step_count": 2,
+  "steps": [
+    {
+      "step_number": 1,
+      "tool_name": "search_budgets",
+      "duration_ms": 0,
+      "input_tokens": 100,
+      "output_tokens": 50,
+      "reasoning": null,
+      "action_arguments": {
+        "query": "authentication backend",
+        "filters": null
+      },
+      "observation": "Found 0 historical references for query 'authentication backend'",
+      "tool_error": null
+    },
+    {
+      "step_number": 2,
+      "tool_name": "calculate_estimate",
+      "duration_ms": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "reasoning": null,
+      "action_arguments": {
+        "components": [
+          {
+            "name": "Authentication backend",
+            "reference_amounts": [
+              420.0,
+              380.0
+            ]
+          }
+        ]
+      },
+      "observation": "Tool execution error: object dict can't be used in 'await' expression",
+      "tool_error": "Tool execution error: object dict can't be used in 'await' expression"
+    }
+  ],
+  "termination_reason": "success",
+  "final_estimate": {
+    "summary": "Estimation complete. Total effort: ~400 engineer-hours.",
+    "step_count": 2
+  },
+  "error_message": null
+}

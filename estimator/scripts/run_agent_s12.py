@@ -88,7 +88,8 @@ async def main():
     async def search_budgets_wrapped(search_args):
         return await tools.search_budgets(search_args)
 
-    def calculate_estimate_wrapped(calc_args):
+    async def calculate_estimate_wrapped(calc_args):
+        # calculate_estimate is sync but we wrap it as async for consistency
         return tools.calculate_estimate(calc_args)
 
     # Set up LLM client
